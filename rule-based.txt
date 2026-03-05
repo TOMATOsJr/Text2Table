@@ -1,0 +1,94 @@
+RULE-BASED RELATION EXTRACTION
+
+Overview
+Rule-based relation extraction identifies relationships between entities using manually designed linguistic patterns. These patterns describe how a relationship appears in text. When the system finds a sentence that matches a pattern, it extracts a structured triple from it.
+
+Goal
+Convert sentences into structured triples:
+
+(subject, relation, object)
+
+Example sentence:
+Leonard Shenoff Randle was born on February 12, 1949 and played for the Seattle Mariners.
+
+Expected triples:
+(Randle, birth_date, February 12 1949)
+(Randle, played_for, Seattle Mariners)
+
+Step-by-Step Process
+
+Step 1: Text Preprocessing
+Clean the input paragraph to remove noise such as special tokens, extra whitespace, and irregular punctuation. The cleaned text should contain normal readable sentences.
+
+Example:
+Leonard Shenoff Randle (born February 12, 1949) is a former Major League Baseball player.
+
+Step 2: Sentence Segmentation
+Split the paragraph into individual sentences because pattern rules are easier to apply at the sentence level.
+
+Example:
+Sentence 1: Leonard Shenoff Randle (born February 12, 1949) is a former Major League Baseball player.
+Sentence 2: He played for the Seattle Mariners.
+
+Step 3: Named Entity Recognition
+Identify entities in the sentence. Common entity types include:
+
+PERSON
+DATE
+LOCATION
+ORGANIZATION
+PROFESSION
+
+Example output:
+Leonard Shenoff Randle → PERSON
+February 12, 1949 → DATE
+Seattle Mariners → ORGANIZATION
+
+These entities will become nodes in the knowledge graph.
+
+Step 4: Define Relation Patterns
+Create patterns that represent relationships commonly found in biography text.
+
+Examples of useful relations:
+
+Birth date patterns: <Person> was born on <Date> <Person> (born <Date>)
+born on <Date>
+
+Example extraction:
+Sentence: Randle was born on February 12, 1949.
+Triple: (Randle, birth_date, February 12 1949)
+
+Occupation patterns: <Person> is a <Profession> <Person> is an <Profession> <Person> worked as a <Profession>
+
+Example:
+Sentence: Randle is a former baseball player.
+Triple: (Randle, occupation, baseball player)
+
+Team membership patterns: <Person> played for <Organization> <Person> joined <Organization> <Person> was a member of <Organization>
+
+Example:
+Sentence: He played for the Seattle Mariners.
+Triple: (Randle, played_for, Seattle Mariners)
+
+Step 5: Pattern Matching
+The system scans each sentence and checks whether it matches any predefined pattern.
+
+If a pattern matches, the relation is identified and the corresponding entities are extracted.
+
+Step 6: Triple Generation
+For each detected relation, generate a triple:
+
+(subject, relation, object)
+
+Example output:
+(Randle, birth_date, February 12 1949)
+(Randle, occupation, baseball player)
+(Randle, played_for, Seattle Mariners)
+
+These triples can then be inserted into the knowledge graph.
+
+Advantages
+Rule-based extraction is simple to implement and easy to understand. It works well for repetitive sentence structures commonly found in biography text.
+
+Limitations
+Natural language varies greatly, and many sentences express the same fact in different ways. Because rules must be written manually, covering all possible variations becomes difficult. As a result, rule-based systems often miss many valid relations.

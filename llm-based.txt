@@ -1,0 +1,85 @@
+LLM-ASSISTED RELATION EXTRACTION
+
+Overview
+LLM-assisted extraction uses a large language model to interpret natural language and directly produce structured knowledge graph triples. The model performs entity detection and relation extraction internally.
+
+Goal
+Provide a paragraph to the model and obtain triples describing the facts contained in the text.
+
+Example paragraph:
+Leonard Shenoff Randle (born February 12, 1949) is a former Major League Baseball player who played for the Seattle Mariners.
+
+Expected triples:
+(Randle, birth_date, February 12 1949)
+(Randle, occupation, baseball player)
+(Randle, played_for, Seattle Mariners)
+
+Step-by-Step Process
+
+Step 1: Text Preprocessing
+Clean the paragraph to remove unnecessary artifacts and ensure the text is readable.
+
+Step 2: Construct an Extraction Prompt
+The language model must be instructed to extract structured information.
+
+Example prompt:
+
+Extract knowledge graph triples from the following biography text.
+Each triple should follow the format (subject, relation, object).
+
+Text:
+Leonard Randle was born on February 12, 1949 and played for the Seattle Mariners.
+
+Step 3: Entity Recognition by the Model
+The model identifies entities such as people, dates, organizations, and professions.
+
+Example entities:
+Leonard Randle → Person
+February 12 1949 → Date
+Seattle Mariners → Organization
+
+Step 4: Relation Identification
+The model interprets linguistic meaning to determine relationships.
+
+Example phrases and inferred relations:
+
+born → birth_date
+played for → played_for
+is a → occupation
+
+Step 5: Triple Generation
+The model outputs triples representing extracted facts.
+
+Example output:
+
+(Randle, birth_date, February 12 1949)
+(Randle, occupation, baseball player)
+(Randle, played_for, Seattle Mariners)
+
+Step 6: Post-Processing
+The extracted triples may require formatting or normalization.
+
+Examples of normalization:
+
+"born on" → birth_date
+"member of" → affiliated_with
+"worked as" → occupation
+
+Step 7: Graph Construction
+Insert the triples into a knowledge graph.
+
+Example graph:
+
+Randle
+├── birth_date → 1949
+├── occupation → Baseball Player
+└── played_for → Seattle Mariners
+
+Advantages
+LLM-based extraction can handle complex sentences and diverse writing styles. It often captures relations that rule-based or dependency-based systems miss.
+
+Limitations
+The method relies on large language models and may require API access or significant computing resources. The model’s output may also vary between runs, which can make strict evaluation difficult.
+
+Summary
+LLM-assisted extraction is powerful for interpreting natural language but requires careful prompt design and validation to ensure reliable knowledge graph construction.
