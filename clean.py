@@ -41,6 +41,6 @@ def clean_csv(input_file, output_file):
     df["sent"] = df["sent"].apply(clean_sentence)
     df.to_csv(output_file, index=False)
 
-clean_csv("dataset/train_stacked.csv", "cleaned_dataset/train_stacked.csv")
-clean_csv("dataset/valid_stacked.csv", "cleaned_dataset/valid_stacked.csv")
-clean_csv("dataset/test_stacked.csv", "cleaned_dataset/test_stacked.csv")
+clean_csv("dataset/train_stacked.csv", "cleaned_dataset/train.csv")
+clean_csv("dataset/valid_stacked.csv", "cleaned_dataset/valid.csv")
+clean_csv("dataset/test_stacked.csv", "cleaned_dataset/test.csv")
