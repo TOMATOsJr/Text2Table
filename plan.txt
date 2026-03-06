@@ -1,0 +1,249 @@
+PROJECT: PARAGRAPH → KNOWLEDGE GRAPH → TABLE USING OPEN INFORMATION EXTRACTION
+
+Goal
+The goal of this project is to convert a biography paragraph into a structured table. The system first constructs a knowledge graph from the paragraph using Open Information Extraction (OpenIE) and then converts that graph into a table format similar to a Wikipedia infobox.
+
+Example Input Paragraph
+Leonard Shenoff Randle (born February 12, 1949) is a former Major League Baseball player who played for the Seattle Mariners.
+
+Desired Final Table
+
+attribute | value
+name | Leonard Shenoff Randle
+birth_date | February 12 1949
+occupation | baseball player
+team | Seattle Mariners
+
+STAGE 1: TEXT PREPROCESSING
+
+Purpose
+Prepare the paragraph so that information extraction can work correctly.
+
+Tasks performed in this stage
+
+1. Unicode normalization so all characters follow a consistent encoding.
+2. Removal of dataset-specific tokens such as -lrb-, -rrb-, -lsb-, etc.
+3. Normalize punctuation spacing (for example remove spaces before commas and periods).
+4. Remove unnecessary extra whitespace.
+5. Split the paragraph into sentences.
+
+Example
+
+Original text
+Leonard Shenoff Randle -lrb- born February 12 , 1949 -rrb- is a former baseball player .
+
+Cleaned text
+Leonard Shenoff Randle (born February 12, 1949) is a former baseball player.
+
+Sentence segmentation
+
+Sentence 1
+Leonard Shenoff Randle (born February 12, 1949) is a former baseball player.
+
+Sentence 2
+He played for the Seattle Mariners.
+
+Why this step is important
+OpenIE systems usually operate at the sentence level, so clean and properly segmented sentences are required for accurate extraction.
+
+STAGE 2: OPEN INFORMATION EXTRACTION
+
+Purpose
+Automatically extract relational facts from each sentence without requiring a predefined schema.
+
+Concept
+OpenIE extracts tuples of the form
+
+(subject, relation, object)
+
+Example sentence
+Randle played for the Seattle Mariners.
+
+Extraction
+(Randle, played for, Seattle Mariners)
+
+Example sentence
+Randle was born on February 12, 1949.
+
+Extraction
+(Randle, born on, February 12 1949)
+
+Important property
+Unlike traditional relation extraction systems, OpenIE does not require predefined relation types. The relation phrase is extracted exactly as it appears in the text.
+
+Examples of relations extracted by OpenIE
+
+played for
+born on
+worked at
+served as
+won
+
+Output of this stage
+A list of extracted tuples representing factual relationships from the paragraph.
+
+Example extracted tuples
+
+(Randle, born on, February 12 1949)
+(Randle, is, baseball player)
+(Randle, played for, Seattle Mariners)
+
+STAGE 3: KNOWLEDGE GRAPH CONSTRUCTION
+
+Purpose
+Convert the extracted tuples into a graph structure.
+
+Concept
+A knowledge graph contains nodes and edges.
+
+Nodes represent entities or values.
+Edges represent relationships between them.
+
+Example tuples
+
+(Randle, born on, February 12 1949)
+(Randle, played for, Seattle Mariners)
+
+Graph nodes
+
+Randle
+February 12 1949
+Seattle Mariners
+
+Graph edges
+
+Randle -- born on --> February 12 1949
+Randle -- played for --> Seattle Mariners
+
+Graph representation
+
+Randle
+├── born on → February 12 1949
+└── played for → Seattle Mariners
+
+The graph stores multiple facts about the same entity in a structured form.
+
+STAGE 4: RELATION NORMALIZATION
+
+Purpose
+Convert the natural language relations extracted by OpenIE into standardized attribute names.
+
+Problem
+OpenIE relations appear in natural language and may vary.
+
+Examples
+
+played for
+member of
+signed with
+
+All these phrases refer to the same concept: team membership.
+
+Solution
+Map similar relation phrases to standardized attribute names.
+
+Example mapping
+
+born on → birth_date
+is → occupation
+played for → team
+member of → team
+served as → position
+
+Example transformation
+
+Original tuple
+(Randle, played for, Seattle Mariners)
+
+Normalized tuple
+(Randle, team, Seattle Mariners)
+
+After normalization the tuples may look like
+
+(Randle, birth_date, February 12 1949)
+(Randle, occupation, baseball player)
+(Randle, team, Seattle Mariners)
+
+This produces a cleaner and more consistent knowledge graph.
+
+STAGE 5: KNOWLEDGE GRAPH REFINEMENT
+
+Purpose
+Improve graph consistency and ensure all relations refer to the correct entity.
+
+Tasks
+
+1. Merge duplicate entities if they appear multiple times.
+2. Perform coreference resolution to resolve pronouns.
+
+Example paragraph
+
+Randle debuted in 1971. He played for the Seattle Mariners.
+
+Coreference resolution
+
+He → Randle
+
+Resulting tuples
+
+(Randle, debut_year, 1971)
+(Randle, team, Seattle Mariners)
+
+Graph representation
+
+Randle
+├── debut_year → 1971
+└── team → Seattle Mariners
+
+This step ensures that information from multiple sentences is connected correctly in the graph.
+
+STAGE 6: TABLE GENERATION FROM KNOWLEDGE GRAPH
+
+Purpose
+Convert the knowledge graph into a structured table.
+
+Method
+Each outgoing edge from the main person node becomes a row in the table.
+
+Example graph
+
+Randle
+├── birth_date → February 12 1949
+├── occupation → baseball player
+└── team → Seattle Mariners
+
+Converted table
+
+attribute | value
+birth_date | February 12 1949
+occupation | baseball player
+team | Seattle Mariners
+
+The entity name becomes the main identifier.
+
+Final table
+
+name | Leonard Shenoff Randle
+birth_date | February 12 1949
+occupation | baseball player
+team | Seattle Mariners
+
+SUMMARY OF THE FULL PIPELINE
+
+paragraph
+↓
+text preprocessing
+↓
+sentence segmentation
+↓
+OpenIE extraction
+↓
+knowledge graph construction
+↓
+relation normalization
+↓
+knowledge graph refinement
+↓
+table generation
+
+The final system converts an unstructured paragraph into a structured table through an intermediate knowledge graph representation.

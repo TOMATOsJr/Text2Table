@@ -16,3 +16,9 @@ replacements = {
 3) Remove citations
 4) Remove punctuation spacing
 5) Remove extra whitespaces
+
+# Entity Extraction
+Using 3 models currently:
+1) openIE6
+2) spacy NER + REBEL
+3) 
