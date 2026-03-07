@@ -29,10 +29,13 @@ python3 run.py \
 --save models/oie_model \
 --gpus 0
 ```
+This will extract entities and its relation.
 Then run
 ```bash
 python3 clean_output.py
 ```
 after changing the paths correspondingly.
+This will clean the outputs extracted by openIE6.
+The cleaning is done by making a relation map (hardcoded for now) and normalising some outputs to get a better map and also adding a confidence threshold to prevent noise from appearing in the knowledge graphs.
 2) spacy NER + REBEL
 3) 
