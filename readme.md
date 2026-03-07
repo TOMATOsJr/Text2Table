@@ -19,6 +19,20 @@ replacements = {
 
 # Entity Extraction
 Using 3 models currently:
-1) openIE6
+1) openIE6  
+Instructions to run
+```bash
+python3 run.py \
+--mode predict \
+--inp input.txt \
+--out output.txt \
+--save models/oie_model \
+--gpus 0
+```
+Then run
+```bash
+python3 clean_output.py
+```
+after changing the paths correspondingly.
 2) spacy NER + REBEL
 3) 
