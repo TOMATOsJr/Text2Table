@@ -1,3 +1,9 @@
 wikipedia-biography-dataset*
 cleaned_dataset
 dataset
+*.json
+openIE6/openie_input.txt
+openIE6/output.txt.oie
+openIE6/outputs/
+*.pdf
+!Language-barriers-proposal.pdf
