@@ -4,9 +4,8 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
-import spacy
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
@@ -571,6 +570,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=default_output, help="Output JSONL path")
     parser.add_argument("--model-name", type=str, default=DEFAULT_MODEL, help="REBEL model name")
     parser.add_argument(
+        "--tokenizer-name",
+        type=str,
+        default="",
+        help="Tokenizer source name/path (defaults to --model-name)",
+    )
+    parser.add_argument(
         "--spacy-model",
         type=str,
         default=DEFAULT_SPACY_MODEL,
@@ -589,6 +594,12 @@ def parse_args() -> argparse.Namespace:
         choices=["auto", "cpu", "cuda"],
         default="auto",
         help="Inference device",
+    )
+    parser.add_argument(
+        "--multi-gpu",
+        action="store_true",
+        default=False,
+        help="Use all visible CUDA GPUs via DataParallel",
     )
     parser.add_argument(
         "--max-input-length",
@@ -640,6 +651,15 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Skip title-based pronoun replacement",
     )
+    parser.add_argument(
+        "--no-postprocess",
+        action="store_true",
+        default=False,
+        help=(
+            "Bypass all post-processing and write raw REBEL triplets directly "
+            "to filtered_triples"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -663,16 +683,50 @@ def main() -> None:
     if metadata:
         print(f"Loaded record metadata: {len(metadata)} records from .nb/.title files")
 
-    nlp = None
+    nlp: Any = None
     if args.pipeline_mode == "ner_rebel":
+        import spacy
+
         print(f"Loading spaCy model: {args.spacy_model}")
         nlp = spacy.load(args.spacy_model)
     else:
         print("Pipeline mode: rebel_only (spaCy NER skipped)")
 
+    tokenizer_source = args.tokenizer_name.strip() or args.model_name
+    print(f"Loading REBEL tokenizer: {tokenizer_source}")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
     print(f"Loading REBEL model: {args.model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name).to(device)
+
+    model_parallel_enabled = False
+    if args.multi_gpu:
+        if device.type != "cuda":
+            raise ValueError("--multi-gpu requires CUDA device")
+        gpu_count = torch.cuda.device_count()
+        if gpu_count < 2:
+            print("--multi-gpu requested, but fewer than 2 CUDA GPUs are visible")
+            model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name).to(device)
+        else:
+            print(f"Using transformers device_map='balanced' across up to {gpu_count} GPUs")
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                args.model_name,
+                device_map="balanced",
+            )
+            hf_map = getattr(model, "hf_device_map", None)
+            if hf_map:
+                used_devices = sorted(
+                    {
+                        str(v)
+                        for v in hf_map.values()
+                        if isinstance(v, (int, str))
+                    }
+                )
+                print(f"Model shards placed on devices: {', '.join(used_devices)}")
+            model_parallel_enabled = True
+    else:
+        model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name).to(device)
+
+    if not model_parallel_enabled and device.type == "cuda":
+        torch.cuda.empty_cache()
     model.eval()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -745,14 +799,18 @@ def main() -> None:
                 "raw_triples": raws,
             })
 
-    # Build relation vocabulary from raw outputs.
-    all_raw = [item["raw_triples"] for item in buffered]
-    discovered = discover_relations(all_raw)
-    known_relations = SEED_RELATIONS | discovered
-    print(
-        f"Relation vocabulary: {len(SEED_RELATIONS)} seed + "
-        f"{len(discovered - SEED_RELATIONS)} discovered = {len(known_relations)} total"
-    )
+    # Build relation vocabulary from raw outputs unless post-processing is disabled.
+    known_relations: set[str] | None = None
+    if not args.no_postprocess:
+        all_raw = [item["raw_triples"] for item in buffered]
+        discovered = discover_relations(all_raw)
+        known_relations = SEED_RELATIONS | discovered
+        print(
+            f"Relation vocabulary: {len(SEED_RELATIONS)} seed + "
+            f"{len(discovered - SEED_RELATIONS)} discovered = {len(known_relations)} total"
+        )
+    else:
+        print("Post-processing disabled: writing raw REBEL triples directly")
 
     # ----------------------------------------------------------------
     # Phase B: Post-process (split, filter, ground) and write output
@@ -766,50 +824,54 @@ def main() -> None:
             entities = item["entities"]
             raw_triples = item["raw_triples"]
 
-            # Split concatenated relation strings using discovered vocab.
-            split_triples = split_concatenated_triples(
-                raw_triples, sentence, known_relations=known_relations,
-            )
-
-            # Deduplicate after splitting.
-            _seen_keys: set[tuple[str, str, str]] = set()
-            _deduped: list[dict[str, str]] = []
-            for t in split_triples:
-                _key = (t["subject"], t["relation"], t["object"])
-                if _key not in _seen_keys:
-                    _deduped.append(t)
-                    _seen_keys.add(_key)
-            split_triples = _deduped
-
-            if args.pipeline_mode == "ner_rebel":
-                ner_filtered = filter_triples(
-                    split_triples, entities, filter_mode=args.filter_mode
-                )
+            if args.no_postprocess:
+                final_triples = raw_triples
+                dropped_triples: list[dict[str, str]] = []
             else:
-                ner_filtered = split_triples
+                # Split concatenated relation strings using discovered vocab.
+                split_triples = split_concatenated_triples(
+                    raw_triples, sentence, known_relations=known_relations,
+                )
 
-            quality_filtered = quality_filter_triples(
-                ner_filtered, entities, quality_mode=args.quality_mode,
-            )
+                # Deduplicate after splitting.
+                _seen_keys: set[tuple[str, str, str]] = set()
+                _deduped: list[dict[str, str]] = []
+                for t in split_triples:
+                    _key = (t["subject"], t["relation"], t["object"])
+                    if _key not in _seen_keys:
+                        _deduped.append(t)
+                        _seen_keys.add(_key)
+                split_triples = _deduped
 
-            # Grounding check: drop triples where neither subject
-            # nor object text appears in the input sentence.
-            sent_lower = sentence.lower()
-            final_triples = [
-                t for t in quality_filtered
-                if normalize_text(t["subject"]) in sent_lower
-                or normalize_text(t["object"]) in sent_lower
-            ]
+                if args.pipeline_mode == "ner_rebel":
+                    ner_filtered = filter_triples(
+                        split_triples, entities, filter_mode=args.filter_mode
+                    )
+                else:
+                    ner_filtered = split_triples
 
-            dropped_triples = [
-                t
-                for t in raw_triples
-                if (t["subject"], t["relation"], t["object"])
-                not in {
-                    (f["subject"], f["relation"], f["object"])
-                    for f in final_triples
-                }
-            ]
+                quality_filtered = quality_filter_triples(
+                    ner_filtered, entities, quality_mode=args.quality_mode,
+                )
+
+                # Grounding check: drop triples where neither subject
+                # nor object text appears in the input sentence.
+                sent_lower = sentence.lower()
+                final_triples = [
+                    t for t in quality_filtered
+                    if normalize_text(t["subject"]) in sent_lower
+                    or normalize_text(t["object"]) in sent_lower
+                ]
+
+                dropped_triples = [
+                    t
+                    for t in raw_triples
+                    if (t["subject"], t["relation"], t["object"])
+                    not in {
+                        (f["subject"], f["relation"], f["object"])
+                        for f in final_triples
+                    }
+                ]
             record = {
                 "record_id": record_id,
                 "title": title,
