@@ -1,0 +1,45 @@
+# Config for lightweight REBEL generation inference (no triplet parsing).
+
+model:
+  # Fine-tuned model directory (relative to this config file or absolute path).
+  model_path: ../../rebel_finetuned/best_model
+
+data:
+  # Input JSONL (one JSON object per line).
+  input_path: ../../test.jsonl
+  # Output JSONL file to write predictions.
+  output_path: predictions_test.jsonl
+  # Field in each JSON row used as model input text.
+  input_field: input_ids
+  # Process only first N valid datapoints. Set null to process full dataset.
+  sample_size: 1000
+  # If true, rows with missing/empty input_field are skipped.
+  skip_empty: true
+
+runtime:
+  # Batch size for generation.
+  batch_size: 32
+  # auto | cpu | cuda
+  device: cuda
+  # If true and multiple GPUs are visible, load model with device_map=balanced.
+  multi_gpu: false
+  # auto | fp16 | bf16 | fp32 (applies on CUDA)
+  torch_dtype: auto
+  # If false, script will fail when output file already exists.
+  overwrite_output: true
+
+generation:
+  # Tokenization / generation controls.
+  max_input_length: 512
+  max_output_length: 256
+  num_beams: 2
+  num_return_sequences: 1
+  do_sample: false
+  temperature: 1.0
+  top_p: 1.0
+
+output:
+  # Keep all returned generations in addition to generated_text.
+  include_all_sequences: false
+  # Include lightweight run metadata per row.
+  include_metadata: true

@@ -17,7 +17,6 @@ from transformers import (
     set_seed,
 )
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fine-tune REBEL on JSONL triplet data using 4 GPUs with torchrun."
@@ -25,19 +24,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--train-file",
         type=Path,
-        default=Path("pre-processing/rebel_dataset/train.jsonl"),
+        default=Path("rebel_dataset/train.jsonl"),
         help="Path to training JSONL file",
     )
     parser.add_argument(
         "--valid-file",
         type=Path,
-        default=Path("pre-processing/rebel_dataset/valid.jsonl"),
+        default=Path("rebel_dataset/valid.jsonl"),
         help="Path to validation JSONL file",
     )
     parser.add_argument(
         "--test-file",
         type=Path,
-        default=Path("pre-processing/rebel_dataset/test.jsonl"),
+        default=Path("rebel_dataset/test.jsonl"),
         help="Path to test JSONL file",
     )
     parser.add_argument(
@@ -49,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("pre-processing/rebel_finetuned"),
+        default=Path("rebel_finetuned"),
         help="Root output directory for checkpoints and final best model",
     )
     parser.add_argument(
@@ -59,7 +58,7 @@ def parse_args() -> argparse.Namespace:
         help="Directory to write the final best model. Defaults to <output-dir>/best_model",
     )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-train-epochs", type=float, default=40.0)
+    parser.add_argument("--num-train-epochs", type=float, default=10.0)
     parser.add_argument("--learning-rate", type=float, default=3e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.06)
@@ -72,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--logging-steps", type=int, default=500)
     parser.add_argument("--save-total-limit", type=int, default=1)
     parser.add_argument("--early-stopping-patience", type=int, default=5)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument(
         "--require-world-size",
         type=int,
@@ -175,13 +174,14 @@ def main() -> None:
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         predict_with_generate=True,
         generation_max_length=args.max_target_length,
-        generation_num_beams=4,
+        generation_num_beams=1,
         save_total_limit=args.save_total_limit,
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         fp16=torch.cuda.is_available(),
         dataloader_num_workers=args.num_workers,
+        dataloader_prefetch_factor=4,
         dataloader_pin_memory=True,
         ddp_find_unused_parameters=False,
         report_to="none",

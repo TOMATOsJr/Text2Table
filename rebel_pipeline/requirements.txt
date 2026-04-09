@@ -1,0 +1,21 @@
+# Core dependencies for finetuning + inference in this repo.
+# GPU note: these pins use CUDA 12.4 wheels, compatible with your NVIDIA driver/CUDA runtime.
+# If you need CPU-only, replace the torch line with a CPU wheel.
+
+--index-url https://pypi.org/simple
+
+# Direct CUDA wheel avoids cross-index conflicts with uv.
+torch @ https://download.pytorch.org/whl/cu124/torch-2.5.1%2Bcu124-cp310-cp310-linux_x86_64.whl
+
+transformers==4.46.3
+datasets==3.1.0
+accelerate==1.1.1
+safetensors==0.4.5
+sentencepiece==0.2.0
+
+tqdm==4.67.1
+pandas==2.2.3
+PyYAML==6.0.2
+
+# Optional but recommended for REBEL/seq2seq workflows.
+protobuf==5.29.0

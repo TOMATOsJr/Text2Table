@@ -3,3 +3,5 @@ cleaned_dataset
 dataset
 *.pdf
 !Language-barriers-proposal.pdf
+*pycache*
+*rebel_finetuned*
