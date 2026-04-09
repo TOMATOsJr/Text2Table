@@ -1,0 +1,19 @@
+{
+  "pred_csv": "../tables/knowledge_graph_predictions_table.csv",
+  "gold_csv": "../gold/gold_test_table_dual.csv",
+  "num_pred_titles": 34854,
+  "num_gold_titles": 36415,
+  "num_common_titles": 34854,
+  "num_pred_triples": 112129,
+  "num_gold_triples": 140249,
+  "chrf": 62.24813333515639,
+  "fuzzy_threshold": 0.78,
+  "triple_level": {
+    "matched": 84689,
+    "pred_total": 112129,
+    "gold_total": 140249,
+    "precision": 0.7552818628543909,
+    "recall": 0.6038474427625152,
+    "f1": 0.6711282282924819
+  }
+}
