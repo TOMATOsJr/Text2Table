@@ -3,7 +3,8 @@
 
 This wrapper does two steps:
 1) Convert infer_rebel output with rebel_to_kg.py
-2) Build tables with Text2Table/Post mid sub files _ rough/kg_to_table.py
+2) Build grouped attribute blocks with
+    Text2Table/Post mid sub files _ rough/kg_to_table_csv.py
 """
 
 from __future__ import annotations
@@ -49,14 +50,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--table-output",
         type=Path,
-        default=Path("tables/tables_from_rebel_pipeline.jsonl"),
-        help="Final table output path",
-    )
-    parser.add_argument(
-        "--output-format",
-        choices=["jsonl", "box", "markdown"],
-        default="jsonl",
-        help="Final table output format",
+        default=Path("tables/tables_from_rebel_pipeline.txt"),
+        help="Final grouped table output path",
     )
     parser.add_argument(
         "--convert-limit",
@@ -68,7 +63,12 @@ def parse_args() -> argparse.Namespace:
         "--table-limit",
         type=int,
         default=0,
-        help="Limit records for kg_to_table.py (0 = all)",
+        help="Limit records for kg_to_table_csv.py (0 = all)",
+    )
+    parser.add_argument(
+        "--no-normalize-relations",
+        action="store_true",
+        help="Disable relation normalization in kg_to_table_csv.py",
     )
     parser.add_argument(
         "--python",
@@ -84,7 +84,7 @@ def main() -> None:
 
     repo_root = Path(__file__).resolve().parents[1]
     convert_script = repo_root / "rebel_pipeline" / "rebel_to_kg.py"
-    kg_to_table_script = repo_root / "Post mid sub files _ rough" / "kg_to_table.py"
+    kg_to_table_script = repo_root / "Post mid sub files _ rough" / "kg_to_table_csv.py"
 
     input_path = (repo_root / args.input).resolve() if not args.input.is_absolute() else args.input
     kg_json_path = (
@@ -124,11 +124,11 @@ def main() -> None:
         str(kg_json_path),
         "--output",
         str(table_output_path),
-        "--output-format",
-        args.output_format,
     ]
     if args.table_limit > 0:
         table_cmd.extend(["--limit", str(args.table_limit)])
+    if args.no_normalize_relations:
+        table_cmd.append("--no-normalize-relations")
 
     print("Pipeline start")
     print(f"Input: {input_path}")

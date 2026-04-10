@@ -96,6 +96,14 @@ Constraint:
 
 ## Multi-GPU Notes
 
+```bash
+torchrun --nproc_per_node=4 Text2Table/rebel_pipeline/pre-processing-finetune/finetune_rebel.py \
+  --train-file half_dataset/grounded_train_output.jsonl \
+  --valid-file half_dataset/grounded_valid_output.jsonl \
+  --test-file half_dataset/grounded_test_output.jsonl \
+  --output-dir Text2Table/rebel_pipeline/rebel_finetuned_grounded_half
+```
+
 - `runtime.multi_gpu: true` requires CUDA and at least 2 visible GPUs.
 - With multiple GPUs, model loading uses Hugging Face `device_map=balanced`.
 - If fewer than 2 GPUs are visible, script falls back to single-GPU execution.

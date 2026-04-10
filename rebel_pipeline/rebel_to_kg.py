@@ -5,10 +5,12 @@ This script intentionally performs only the preprocessing that KG2Table does not
 - Parse raw REBEL generated text into structured triples
 - Clean sentence text formatting
 - Infer a title/person name from input text
-- Emit a JSON array with the schema expected by kg_to_table.py
+- Emit a JSON array with the schema expected by kg_to_table.py and
+    kg_to_table_csv.py
 
 It does NOT do relation normalization, anchor filtering, disambiguation,
-attribute aggregation, or table rendering. Those are handled by kg_to_table.py.
+attribute aggregation, or table rendering. Those are handled by kg_to_table.py
+or kg_to_table_csv.py.
 """
 
 import argparse

@@ -11,7 +11,6 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     DataCollatorForSeq2Seq,
-    EarlyStoppingCallback,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
     set_seed,
@@ -49,7 +48,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=Path,
         default=Path("rebel_finetuned"),
-        help="Root output directory for checkpoints and final best model",
+        help="Root output directory for final model artifacts",
     )
     parser.add_argument(
         "--best-model-dir",
@@ -58,7 +57,7 @@ def parse_args() -> argparse.Namespace:
         help="Directory to write the final best model. Defaults to <output-dir>/best_model",
     )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-train-epochs", type=float, default=10.0)
+    parser.add_argument("--num-train-epochs", type=float, default=3.0)
     parser.add_argument("--learning-rate", type=float, default=3e-5)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.06)
@@ -118,12 +117,10 @@ def main() -> None:
     args = parse_args()
     check_runtime(args.require_world_size)
     set_seed(args.seed)
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_dir = args.output_dir / "checkpoints"
     best_model_dir = args.best_model_dir or (args.output_dir / "best_model")
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
 
@@ -156,13 +153,12 @@ def main() -> None:
     test_dataset = cast(Any, tokenized["test"])
 
     training_args = Seq2SeqTrainingArguments(
-        output_dir=str(checkpoint_dir),
+        output_dir=str(args.output_dir),
         do_train=True,
         do_eval=True,
         eval_strategy="steps",
         eval_steps=args.eval_steps,
-        save_strategy="steps",
-        save_steps=args.eval_steps,
+        save_strategy="no",
         logging_strategy="steps",
         logging_steps=args.logging_steps,
         learning_rate=args.learning_rate,
@@ -175,10 +171,6 @@ def main() -> None:
         predict_with_generate=True,
         generation_max_length=args.max_target_length,
         generation_num_beams=1,
-        save_total_limit=args.save_total_limit,
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        greater_is_better=False,
         fp16=torch.cuda.is_available(),
         dataloader_num_workers=args.num_workers,
         dataloader_prefetch_factor=4,
@@ -196,7 +188,6 @@ def main() -> None:
         eval_dataset=validation_dataset,
         processing_class=tokenizer,
         data_collator=collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
     )
 
     train_result = trainer.train()
@@ -207,9 +198,10 @@ def main() -> None:
     val_metrics = trainer.evaluate(eval_dataset=validation_dataset, metric_key_prefix="valid")
     test_metrics = trainer.evaluate(eval_dataset=test_dataset, metric_key_prefix="test")
 
-    # Keep only the final best model artifact.
-    if checkpoint_dir.exists():
-        shutil.rmtree(checkpoint_dir, ignore_errors=True)
+    # Delete any stale checkpoint folder from previous runs.
+    stale_checkpoint_dir = args.output_dir / "checkpoints"
+    if stale_checkpoint_dir.exists():
+        shutil.rmtree(stale_checkpoint_dir, ignore_errors=True)
 
     metrics_path = best_model_dir / "metrics.json"
     with metrics_path.open("w", encoding="utf-8") as f:
