@@ -38,19 +38,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path("predictions_test.jsonl"),
+        default=Path("./rebel_pipeline/predictions_grounded_test.jsonl"),
         help="Inference output file (JSONL/JSON) from infer_rebel",
     )
     parser.add_argument(
         "--kg-json",
         type=Path,
-        default=Path("processed_for_kg_to_table.json"),
+        default=Path("./rebel_pipeline/processed_for_grounded_kg_to_table.json"),
         help="Intermediate KG-compatible JSON output path",
     )
     parser.add_argument(
         "--table-output",
         type=Path,
-        default=Path("tables/tables_from_rebel_pipeline.txt"),
+        default=Path("./rebel_pipeline/tables/tables_from_rebel_grounded_pipeline.txt"),
         help="Final grouped table output path",
     )
     parser.add_argument(

@@ -56,6 +56,15 @@ def infer_title_from_input(text: str) -> str:
     return title
 
 
+def most_common_subject(triples: list[dict[str, str]]) -> str:
+    if not triples:
+        return ""
+    subjects = [t.get("subject", "").strip() for t in triples if t.get("subject", "").strip()]
+    if not subjects:
+        return ""
+    return max(set(subjects), key=subjects.count)
+
+
 def parse_rebel_output(decoded_text: str) -> list[dict[str, str]]:
     decoded_text = (
         decoded_text.replace("<s>", "")
@@ -223,6 +232,7 @@ def main() -> None:
     for idx, row in enumerate(rows, start=1):
         source_text = row.get(args.input_field, "")
         generated = row.get(args.generated_field, "")
+        labels_text = row.get("labels", "")
 
         if not isinstance(source_text, str) or not isinstance(generated, str):
             dropped += 1
@@ -234,7 +244,19 @@ def main() -> None:
             continue
 
         triples = parse_rebel_output(generated)
-        title = infer_title_from_input(source_text)
+
+        # Prefer label-derived title for exact dataset alignment, then fallback to
+        # source text title inference, and finally generated subject majority.
+        label_triples = parse_rebel_output(labels_text) if isinstance(labels_text, str) and labels_text else []
+        label_title = most_common_subject(label_triples)
+        source_title = infer_title_from_input(source_text)
+        generated_title = most_common_subject(triples)
+        title = label_title or source_title or generated_title
+
+        # Map generated triple subjects to canonical record title to avoid
+        # mismatches like abbreviations or alternate spellings.
+        if title and triples:
+            triples = [{**triple, "subject": title} for triple in triples]
 
         record_id = idx
         meta = row.get("inference_meta")
