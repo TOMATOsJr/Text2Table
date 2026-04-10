@@ -4,9 +4,8 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
-import spacy
 import torch
 from gliner import GLiNER
 from tqdm import tqdm
@@ -405,7 +404,11 @@ def extract_rebel_triples(
         truncation=True,
         max_length=max_input_length,
     )
-    encoded = {key: value.to(device) for key, value in encoded.items()}
+    # Handle both individual device and device_map cases.
+    if hasattr(model, "device"):
+        encoded = {key: value.to(model.device) for key, value in encoded.items()}
+    else:
+        encoded = {key: value.to(device) for key, value in encoded.items()}
 
     with torch.no_grad():
         generated = model.generate(
@@ -573,6 +576,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=default_output, help="Output JSONL path")
     parser.add_argument("--model-name", type=str, default=DEFAULT_MODEL, help="REBEL model name")
     parser.add_argument(
+        "--tokenizer-name",
+        type=str,
+        default="",
+        help="Tokenizer source name/path (defaults to --model-name)",
+    )
+    parser.add_argument(
         "--spacy-model",
         type=str,
         default=DEFAULT_SPACY_MODEL,
@@ -603,6 +612,12 @@ def parse_args() -> argparse.Namespace:
         choices=["auto", "cpu", "cuda"],
         default="auto",
         help="Inference device",
+    )
+    parser.add_argument(
+        "--multi-gpu",
+        action="store_true",
+        default=False,
+        help="Use all visible CUDA GPUs via DataParallel",
     )
     parser.add_argument(
         "--max-input-length",
@@ -672,6 +687,12 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Sort entire dataset by sentence length before batching (minimizes padding)",
     )
+    parser.add_argument(
+        "--no-postprocess",
+        action="store_true",
+        default=False,
+        help="Bypass all post-processing and write raw REBEL triplets directly to JSONL",
+    )
     return parser.parse_args()
 
 
@@ -707,8 +728,10 @@ def main() -> None:
     if metadata:
         print(f"Loaded record metadata: {len(metadata)} records from .nb/.title files")
 
-    nlp = None
+    nlp: Any = None
     if args.pipeline_mode == "ner_rebel":
+        import spacy
+
         print(f"Loading spaCy model: {args.spacy_model}")
         nlp = spacy.load(args.spacy_model)
     else:
@@ -719,20 +742,44 @@ def main() -> None:
         print(f"Loading GLiNER model: {args.gliner_model}")
         gliner_model = GLiNER.from_pretrained(args.gliner_model).to(device)
 
+    tokenizer_source = args.tokenizer_name.strip() or args.model_name
+    print(f"Loading REBEL tokenizer: {tokenizer_source}")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source)
+
     print(f"Loading REBEL model: {args.model_name}")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     
-    model_kwargs = {"device_map": "auto"} if args.quantize else {}
+    model_kwargs = {}
     if args.quantize:
         model_kwargs["load_in_8bit"] = True
+        model_kwargs["device_map"] = "auto"
         print("Using 8-bit quantization for REBEL.")
-        
+    elif args.multi_gpu:
+        if device.type != "cuda":
+            raise ValueError("--multi-gpu requires CUDA device")
+        gpu_count = torch.cuda.device_count()
+        if gpu_count < 2:
+            print("--multi-gpu requested, but fewer than 2 CUDA GPUs are visible")
+        else:
+            print(f"Using transformers device_map='balanced' across up to {gpu_count} GPUs")
+            model_kwargs["device_map"] = "balanced"
+
     model = AutoModelForSeq2SeqLM.from_pretrained(
         args.model_name,
         **model_kwargs
     )
-    if not args.quantize:
+    
+    if not args.quantize and not args.multi_gpu:
         model = model.to(device)
+    
+    if "device_map" in model_kwargs:
+        hf_map = getattr(model, "hf_device_map", None)
+        if hf_map:
+            used_devices = sorted({str(v) for v in hf_map.values() if isinstance(v, (int, str))})
+            print(f"Model shards placed on devices: {', '.join(used_devices)}")
+
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        
     model.eval()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -769,7 +816,7 @@ def main() -> None:
     total_dropped_triples = 0
 
     # ----------------------------------------------------------------
-    # Phase A+B: Run extraction, post-process and write incrementally
+    # Extraction and Streaming Output
     # ----------------------------------------------------------------
     
     skip_count = 0
@@ -779,13 +826,11 @@ def main() -> None:
         print(f"Resuming: skipping first {skip_count} records")
 
     write_mode = "a" if args.resume else "w"
-    
-    # Pre-define known relations for splitting (avoiding global discovery for streaming)
     known_relations = SEED_RELATIONS.copy()
 
     with args.output.open(write_mode, encoding="utf-8") as writer:
-        for i, batch in enumerate(tqdm(chunked(sentence_stream, args.batch_size), desc="Extracting triples")):
-            if i * args.batch_size < skip_count:
+        for b_idx, batch in enumerate(tqdm(chunked(sentence_stream, args.batch_size), desc="Extracting triples")):
+            if b_idx * args.batch_size < skip_count:
                 continue
                 
             sentence_ids = [sid for sid, _, _, _ in batch]
@@ -801,13 +846,9 @@ def main() -> None:
 
             if gliner_model is not None:
                 gliner_labels = ["occupation", "position", "role", "profession", "award", "academic_degree"]
-                gliner_ents_per_sentence = []
-                for sent in sentences:
+                for i, sent in enumerate(sentences):
                     ents = gliner_model.predict_entities(sent, gliner_labels, threshold=0.3)
-                    gliner_ents_per_sentence.append([{"text": e["text"], "label": e["label"]} for e in ents])
-                
-                for i, gl_ents in enumerate(gliner_ents_per_sentence):
-                    entities_per_sentence[i].extend(gl_ents)
+                    entities_per_sentence[i].extend([{"text": e["text"], "label": e["label"]} for e in ents])
 
             # 2. Triple Extraction (with OOM Resilience)
             try:
@@ -822,10 +863,9 @@ def main() -> None:
                     num_return_sequences=args.num_return_sequences,
                 )
             except torch.OutOfMemoryError:
-                print(f"OOM detected in batch {i}. Retrying with sub-batches...")
+                print(f"OOM detected in batch {b_idx}. Retrying with sub-batches...")
                 torch.cuda.empty_cache()
                 raw_triples_per_sentence = []
-                # Fallback: process 1 by 1 for this batch
                 for single_sent in sentences:
                     try:
                         res = extract_rebel_triples(
@@ -846,47 +886,65 @@ def main() -> None:
                 sentence_ids, sentences, record_ids, titles,
                 entities_per_sentence, raw_triples_per_sentence,
             ):
-                # Split and Filter
-                split_triples = split_concatenated_triples(
-                    raws, sent, known_relations=known_relations,
-                )
-
-                _seen_keys = set()
-                _deduped = []
-                for t in split_triples:
-                    _key = (t["subject"], t["relation"], t["object"])
-                    if _key not in _seen_keys:
-                        _deduped.append(t)
-                        _seen_keys.add(_key)
-                
-                if args.pipeline_mode == "ner_rebel":
-                    ner_filtered = filter_triples(_deduped, ents, filter_mode=args.filter_mode)
+                if args.no_postprocess:
+                    final_triples = raws
+                    dropped_triples = []
                 else:
-                    ner_filtered = _deduped
+                    # Split and Filter
+                    split_triples = split_concatenated_triples(
+                        raws, sent, known_relations=known_relations,
+                    )
 
-                quality_filtered = quality_filter_triples(ner_filtered, ents, quality_mode=args.quality_mode)
-                
-                sent_lower = sent.lower()
-                final_triples = [
-                    t for t in quality_filtered
-                    if normalize_text(t["subject"]) in sent_lower
-                    or normalize_text(t["object"]) in sent_lower
-                ]
+                    _seen_keys = set()
+                    _deduped = []
+                    for t in split_triples:
+                        _key = (t["subject"], t["relation"], t["object"])
+                        if _key not in _seen_keys:
+                            _deduped.append(t)
+                            _seen_keys.add(_key)
+                    
+                    if args.pipeline_mode == "ner_rebel":
+                        ner_filtered = filter_triples(_deduped, ents, filter_mode=args.filter_mode)
+                    else:
+                        ner_filtered = _deduped
+
+                    quality_filtered = quality_filter_triples(ner_filtered, ents, quality_mode=args.quality_mode)
+                    
+                    sent_lower = sent.lower()
+                    final_triples = [
+                        t for t in quality_filtered
+                        if normalize_text(t["subject"]) in sent_lower
+                        or normalize_text(t["object"]) in sent_lower
+                    ]
+                    
+                    dropped_triples = [
+                        t for t in raws
+                        if (t["subject"], t["relation"], t["object"]) not in {
+                            (f["subject"], f["relation"], f["object"]) for f in final_triples
+                        }
+                    ]
 
                 record = {
                     "record_id": rid,
                     "title": title,
                     "sentence_id": sid,
                     "sentence": sent,
+                    "pipeline_mode": args.pipeline_mode,
                     "entities": ents,
-                    "triples": final_triples,
+                    "raw_triples": raws,
+                    "filtered_triples": final_triples,
+                    "dropped_triples": dropped_triples,
                     "origin": "hybrid"
                 }
                 writer.write(json.dumps(record, ensure_ascii=False) + "\n")
+                
+                total_processed += 1
+                total_raw_triples += len(raws)
+                total_filtered_triples += len(final_triples)
+                total_dropped_triples += len(dropped_triples)
             
             # Frequent flush
             writer.flush()
-            total_processed += len(batch)
 
     print(f"Saved JSONL output to: {args.output}")
     print(

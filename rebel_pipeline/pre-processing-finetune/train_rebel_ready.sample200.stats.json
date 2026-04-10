@@ -1,0 +1,9 @@
+{
+  "records_total": 200,
+  "records_written": 194,
+  "dropped_no_subject": 0,
+  "dropped_triplet_count": 6,
+  "dropped_short_input": 0,
+  "dropped_short_labels": 0,
+  "triplets_total": 1924
+}
