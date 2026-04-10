@@ -2,17 +2,17 @@
 
 model:
   # Fine-tuned model directory (relative to this config file or absolute path).
-  model_path: ../../rebel_finetuned/best_model
+  model_path: rebel_finetuned_grounded_half/best_model
 
 data:
   # Input JSONL (one JSON object per line).
   input_path: ../../test.jsonl
   # Output JSONL file to write predictions.
-  output_path: predictions_test.jsonl
+  output_path: predictions_grounded_test.jsonl
   # Field in each JSON row used as model input text.
   input_field: input_ids
   # Process only first N valid datapoints. Set null to process full dataset.
-  sample_size: 1000
+  sample_size: 5000
   # If true, rows with missing/empty input_field are skipped.
   skip_empty: true
 
