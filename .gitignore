@@ -2,4 +2,4 @@ wikipedia-biography-dataset*
 cleaned_dataset
 dataset
 *.pdf
-!Language-barriers-proposal.pdf
+!Language-barriers-proposal.pdf*.zip

@@ -8,12 +8,14 @@ from typing import Iterable
 
 import spacy
 import torch
+from gliner import GLiNER
 from tqdm import tqdm
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 DEFAULT_MODEL = "Babelscape/rebel-large"
 DEFAULT_SPACY_MODEL = "en_core_web_trf"
+DEFAULT_GLINER_MODEL = "urchade/gliner_small-v2.1" # Stable and compatible
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +586,18 @@ def parse_args() -> argparse.Namespace:
         help="Process only first N non-empty lines (0 = full file)",
     )
     parser.add_argument(
+        "--use-gliner",
+        action="store_true",
+        default=True,
+        help="Use GLiNER for zero-shot role/occupation extraction",
+    )
+    parser.add_argument(
+        "--gliner-model",
+        type=str,
+        default=DEFAULT_GLINER_MODEL,
+        help="GLiNER model name",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         choices=["auto", "cpu", "cuda"],
@@ -640,7 +654,37 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Skip title-based pronoun replacement",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help="Resume from existing output file (skip lines already present)",
+    )
+    parser.add_argument(
+        "--quantize",
+        action="store_true",
+        default=False,
+        help="Load REBEL in 8-bit mode (requires bitsandbytes)",
+    )
+    parser.add_argument(
+        "--bucket",
+        action="store_true",
+        default=False,
+        help="Sort entire dataset by sentence length before batching (minimizes padding)",
+    )
     return parser.parse_args()
+
+
+def extract_gliner_entities(model, sentences: list[str], labels: list[str]):
+    """Extract zero-shot entities using GLiNER."""
+    results = []
+    # GLiNER works well with batching implicitly if configured, 
+    # but we'll loop for simplicity in the hybrid pipeline.
+    for sent in sentences:
+        entities = model.predict_entities(sent, labels, threshold=0.4)
+        # Convert to standard format
+        results.append([{"text": ent["text"], "label": ent["label"]} for ent in entities])
+    return results
 
 
 def main() -> None:
@@ -670,9 +714,25 @@ def main() -> None:
     else:
         print("Pipeline mode: rebel_only (spaCy NER skipped)")
 
+    gliner_model = None
+    if args.use_gliner:
+        print(f"Loading GLiNER model: {args.gliner_model}")
+        gliner_model = GLiNER.from_pretrained(args.gliner_model).to(device)
+
     print(f"Loading REBEL model: {args.model_name}")
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name).to(device)
+    
+    model_kwargs = {"device_map": "auto"} if args.quantize else {}
+    if args.quantize:
+        model_kwargs["load_in_8bit"] = True
+        print("Using 8-bit quantization for REBEL.")
+        
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.model_name,
+        **model_kwargs
+    )
+    if not args.quantize:
+        model = model.to(device)
     model.eval()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -694,12 +754,14 @@ def main() -> None:
                 sentence = resolve_pronouns(sentence, title)
             yield sentence_id, sentence, record_id, title
 
-    sentence_stream: Iterable[tuple[int, str, int, str]] = preprocess(raw_stream)
+    sentence_stream: list[tuple[int, str, int, str]] = list(preprocess(raw_stream))
 
     if args.sample > 0:
-        sentence_stream = (
-            rec for idx, rec in enumerate(sentence_stream, start=1) if idx <= args.sample
-        )
+        sentence_stream = sentence_stream[:args.sample]
+
+    if args.bucket:
+        print(f"Bucketing: Sorting {len(sentence_stream)} sentences by length...")
+        sentence_stream.sort(key=lambda x: len(x[1]))
 
     total_processed = 0
     total_raw_triples = 0
@@ -707,126 +769,124 @@ def main() -> None:
     total_dropped_triples = 0
 
     # ----------------------------------------------------------------
-    # Phase A: Run REBEL extraction, buffer results, discover relations
+    # Phase A+B: Run extraction, post-process and write incrementally
     # ----------------------------------------------------------------
-    buffered: list[dict] = []  # stores per-sentence data for Phase B
+    
+    skip_count = 0
+    if args.resume and args.output.exists():
+        with args.output.open("r", encoding="utf-8") as f:
+            skip_count = sum(1 for _ in f)
+        print(f"Resuming: skipping first {skip_count} records")
 
-    for batch in tqdm(chunked(sentence_stream, args.batch_size), desc="Extracting triples"):
-        sentence_ids = [sid for sid, _, _, _ in batch]
-        sentences = [s for _, s, _, _ in batch]
-        record_ids = [rid for _, _, rid, _ in batch]
-        titles = [t for _, _, _, t in batch]
+    write_mode = "a" if args.resume else "w"
+    
+    # Pre-define known relations for splitting (avoiding global discovery for streaming)
+    known_relations = SEED_RELATIONS.copy()
 
-        if nlp is not None:
-            entities_per_sentence = extract_entities(nlp, sentences)
-        else:
-            entities_per_sentence = [[] for _ in sentences]
-        raw_triples_per_sentence = extract_rebel_triples(
-            tokenizer=tokenizer,
-            model=model,
-            sentences=sentences,
-            device=device,
-            max_input_length=args.max_input_length,
-            max_output_length=args.max_output_length,
-            num_beams=args.num_beams,
-            num_return_sequences=args.num_return_sequences,
-        )
+    with args.output.open(write_mode, encoding="utf-8") as writer:
+        for i, batch in enumerate(tqdm(chunked(sentence_stream, args.batch_size), desc="Extracting triples")):
+            if i * args.batch_size < skip_count:
+                continue
+                
+            sentence_ids = [sid for sid, _, _, _ in batch]
+            sentences = [s for _, s, _, _ in batch]
+            record_ids = [rid for _, _, rid, _ in batch]
+            titles = [t for _, _, _, t in batch]
 
-        for sid, sent, rid, title, ents, raws in zip(
-            sentence_ids, sentences, record_ids, titles,
-            entities_per_sentence, raw_triples_per_sentence,
-        ):
-            buffered.append({
-                "sentence_id": sid,
-                "sentence": sent,
-                "record_id": rid,
-                "title": title,
-                "entities": ents,
-                "raw_triples": raws,
-            })
-
-    # Build relation vocabulary from raw outputs.
-    all_raw = [item["raw_triples"] for item in buffered]
-    discovered = discover_relations(all_raw)
-    known_relations = SEED_RELATIONS | discovered
-    print(
-        f"Relation vocabulary: {len(SEED_RELATIONS)} seed + "
-        f"{len(discovered - SEED_RELATIONS)} discovered = {len(known_relations)} total"
-    )
-
-    # ----------------------------------------------------------------
-    # Phase B: Post-process (split, filter, ground) and write output
-    # ----------------------------------------------------------------
-    with args.output.open("w", encoding="utf-8") as writer:
-        for item in tqdm(buffered, desc="Post-processing"):
-            sentence_id = item["sentence_id"]
-            sentence = item["sentence"]
-            record_id = item["record_id"]
-            title = item["title"]
-            entities = item["entities"]
-            raw_triples = item["raw_triples"]
-
-            # Split concatenated relation strings using discovered vocab.
-            split_triples = split_concatenated_triples(
-                raw_triples, sentence, known_relations=known_relations,
-            )
-
-            # Deduplicate after splitting.
-            _seen_keys: set[tuple[str, str, str]] = set()
-            _deduped: list[dict[str, str]] = []
-            for t in split_triples:
-                _key = (t["subject"], t["relation"], t["object"])
-                if _key not in _seen_keys:
-                    _deduped.append(t)
-                    _seen_keys.add(_key)
-            split_triples = _deduped
-
-            if args.pipeline_mode == "ner_rebel":
-                ner_filtered = filter_triples(
-                    split_triples, entities, filter_mode=args.filter_mode
-                )
+            # 1. Entity Extraction (NER + GLiNER)
+            if nlp is not None:
+                entities_per_sentence = extract_entities(nlp, sentences)
             else:
-                ner_filtered = split_triples
+                entities_per_sentence = [[] for _ in sentences]
 
-            quality_filtered = quality_filter_triples(
-                ner_filtered, entities, quality_mode=args.quality_mode,
-            )
+            if gliner_model is not None:
+                gliner_labels = ["occupation", "position", "role", "profession", "award", "academic_degree"]
+                gliner_ents_per_sentence = []
+                for sent in sentences:
+                    ents = gliner_model.predict_entities(sent, gliner_labels, threshold=0.3)
+                    gliner_ents_per_sentence.append([{"text": e["text"], "label": e["label"]} for e in ents])
+                
+                for i, gl_ents in enumerate(gliner_ents_per_sentence):
+                    entities_per_sentence[i].extend(gl_ents)
 
-            # Grounding check: drop triples where neither subject
-            # nor object text appears in the input sentence.
-            sent_lower = sentence.lower()
-            final_triples = [
-                t for t in quality_filtered
-                if normalize_text(t["subject"]) in sent_lower
-                or normalize_text(t["object"]) in sent_lower
-            ]
+            # 2. Triple Extraction (with OOM Resilience)
+            try:
+                raw_triples_per_sentence = extract_rebel_triples(
+                    tokenizer=tokenizer,
+                    model=model,
+                    sentences=sentences,
+                    device=device,
+                    max_input_length=args.max_input_length,
+                    max_output_length=args.max_output_length,
+                    num_beams=args.num_beams,
+                    num_return_sequences=args.num_return_sequences,
+                )
+            except torch.OutOfMemoryError:
+                print(f"OOM detected in batch {i}. Retrying with sub-batches...")
+                torch.cuda.empty_cache()
+                raw_triples_per_sentence = []
+                # Fallback: process 1 by 1 for this batch
+                for single_sent in sentences:
+                    try:
+                        res = extract_rebel_triples(
+                            tokenizer=tokenizer, model=model, sentences=[single_sent],
+                            device=device, max_input_length=args.max_input_length,
+                            max_output_length=args.max_output_length,
+                            num_beams=args.num_beams,
+                            num_return_sequences=args.num_return_sequences
+                        )
+                        raw_triples_per_sentence.append(res[0])
+                    except torch.OutOfMemoryError:
+                        print(f"Skipping extremely long sentence (OOM even at batch 1): {single_sent[:50]}...")
+                        raw_triples_per_sentence.append([])
+                        torch.cuda.empty_cache()
 
-            dropped_triples = [
-                t
-                for t in raw_triples
-                if (t["subject"], t["relation"], t["object"])
-                not in {
-                    (f["subject"], f["relation"], f["object"])
-                    for f in final_triples
+            # 3. Post-process and Write Directly
+            for sid, sent, rid, title, ents, raws in zip(
+                sentence_ids, sentences, record_ids, titles,
+                entities_per_sentence, raw_triples_per_sentence,
+            ):
+                # Split and Filter
+                split_triples = split_concatenated_triples(
+                    raws, sent, known_relations=known_relations,
+                )
+
+                _seen_keys = set()
+                _deduped = []
+                for t in split_triples:
+                    _key = (t["subject"], t["relation"], t["object"])
+                    if _key not in _seen_keys:
+                        _deduped.append(t)
+                        _seen_keys.add(_key)
+                
+                if args.pipeline_mode == "ner_rebel":
+                    ner_filtered = filter_triples(_deduped, ents, filter_mode=args.filter_mode)
+                else:
+                    ner_filtered = _deduped
+
+                quality_filtered = quality_filter_triples(ner_filtered, ents, quality_mode=args.quality_mode)
+                
+                sent_lower = sent.lower()
+                final_triples = [
+                    t for t in quality_filtered
+                    if normalize_text(t["subject"]) in sent_lower
+                    or normalize_text(t["object"]) in sent_lower
+                ]
+
+                record = {
+                    "record_id": rid,
+                    "title": title,
+                    "sentence_id": sid,
+                    "sentence": sent,
+                    "entities": ents,
+                    "triples": final_triples,
+                    "origin": "hybrid"
                 }
-            ]
-            record = {
-                "record_id": record_id,
-                "title": title,
-                "sentence_id": sentence_id,
-                "sentence": sentence,
-                "pipeline_mode": args.pipeline_mode,
-                "entities": entities,
-                "raw_triples": raw_triples,
-                "filtered_triples": final_triples,
-                "dropped_triples": dropped_triples,
-            }
-            writer.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-            total_processed += 1
-            total_raw_triples += len(raw_triples)
-            total_filtered_triples += len(final_triples)
-            total_dropped_triples += len(dropped_triples)
+                writer.write(json.dumps(record, ensure_ascii=False) + "\n")
+            
+            # Frequent flush
+            writer.flush()
+            total_processed += len(batch)
 
     print(f"Saved JSONL output to: {args.output}")
     print(

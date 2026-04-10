@@ -1,0 +1,178 @@
+# **Hybrid Neuro-Symbolic Architectures for Biographical Knowledge Transformation: A Technical Review (2023–2026)**
+
+The transformation of unstructured biographical narratives into structured tabular formats has underwent a fundamental architectural shift between 2023 and 2026\. This period marks the transition from end-to-end neural sequence labeling toward multi-stage, hybrid pipelines that utilize an intermediate Knowledge Graph (KG) as a foundational semantic layer.1 The core motivation for this evolution lies in the persistent limitations of purely neural architectures—specifically Large Language Models (LLMs) and specialized transformers—regarding factual hallucination, semantic drift, and the inability to maintain long-range logical consistency within a life narrative.3 By introducing a Knowledge Graph as a structural intermediary, systems can now impose deterministic logical frameworks, such as Markov Logic Networks (MLNs), to verify and filter neural outputs before they are finalized into a tabular schema.5
+
+## **The Text-to-KG-to-Table Architectural Paradigm**
+
+The standard pipeline for processing biographical text now adheres to a refined five-stage architecture: text chunking, neural extraction, normalization/deduplication, graph construction, and tabular projection.8 This architecture is designed to address the "context window" limitations of neural models while ensuring that the final output remains grounded in a verifiable relational structure.2
+
+### **Sequence Segmentation and Neural Extraction**
+
+Biographical narratives, often spanning thousands of words, exceed the effective reasoning capacity of many extraction models when processed as a single block. Consequently, modern systems employ sophisticated text chunking strategies, typically using 150-word segments with 30-word overlaps to preserve relational context across boundaries.8 These chunks are processed by a neural extractor—either a specialized relation extraction (RE) model or a Large Language Model—to identify entities and their respective predicates.8
+
+Recent advancements in systems like KGGen highlight the efficacy of a two-step extraction process: first identifying all unique entities within a chunk, and then predicting subject-predicate-object (SPO) triples based on that entity list.1 This separation of tasks ensures that the model maintains a consistent internal representation of identity throughout the extraction phase, reducing the likelihood of generating "phantom" entities or mismatched relations.1 The use of structured output signatures, such as those provided by DSPy, allows for the enforcement of JSON-based schemas at the point of extraction, facilitating immediate integration into graph-based data structures.1
+
+### **Syntactic Grounding in Neural Relation Extraction**
+
+While prompt-based extraction is common, the 2025 landscape still heavily relies on specialized neural architectures that integrate linguistic features to improve precision.9 In clinical and legal biographies, where the cost of error is high, models often incorporate Part-of-Speech (POS) tagging and dependency parsing to produce a syntactic representation of each sentence.9
+
+By adding linguistic structure via clinical POS taggers and dependency parsers, the extraction model can use both vector embeddings and syntactic trees to predict meaningful links.9 For instance, in a medical biography, a relation extraction model might connect a "drug" entity to a "strength" entity only if there is a valid syntactic path between them, thereby filtering out spurious correlations that a purely attention-based model might miss.9
+
+| Pipeline Stage | Operational Mechanism | Primary Output | Supporting Technology |
+| :---- | :---- | :---- | :---- |
+| **Segmentation** | Chunking with overlap (150/30) | Tokenized Text Blocks | Regex-based splitters, spaCy 8 |
+| **Neural Extraction** | Entity-first SPO triple prediction | Raw JSON Triples | Gemini 2.0, LLM signatures 1 |
+| **Normalization** | Lowercasing, pronoun resolution | Cleaned Triples | Neural Coreference Resolution 8 |
+| **Logical Filtering** | MLN-based verification | Validated Triples | Markov Logic Networks 5 |
+| **Graph Construction** | Node-Edge insertion | Directed Graph (KG) | NetworkX, Cytoscape 2 |
+| **Tabular Projection** | Property-to-Column mapping | Structured Tables | Pandas, SQL Export 1 |
+
+## **Deterministic Logical Frameworks as Structural Guardrails**
+
+The most significant advancement in the 2023–2026 period is the integration of deterministic logic to mitigate the "neural gaps" of semantic drift and hallucination.3 Markov Logic Networks (MLNs) have emerged as the premier framework for this hybrid integration, acting as an "interface layer" between statistical learning and symbolic reasoning.5
+
+### **The Mechanism of Markov Logic Networks**
+
+Markov Logic Networks combine first-order logic with probabilistic graphical models by attaching weights to logical formulas.5 A biographical knowledge base is represented as a set of weighted formulas that define templates for constructing Markov networks.5 The probability of a specific world (or set of extracted triples) is determined by the total weight of the formulas it satisfies.5
+
+The probability distribution is mathematically expressed as:
+
+![][image1]  
+where ![][image2] is the weight of formula ![][image3], and ![][image4] is a binary feature that is 1 if the formula is true in the world ![][image5] and 0 otherwise.5 In a biographical context, these formulas can represent rigid constraints. For example, a formula with an infinite weight might state that an individual cannot be "born" after their "date of death." If a neural model extracts such a relation, the MLN framework assigns it a probability of zero, effectively "filtering" it before it enters the Knowledge Graph.5
+
+### **Verifying and Filtering Neural Outputs**
+
+Hybrid systems use MLNs to perform "abductive reasoning," where the system infers the most likely latent state of a person's life facts from noisy, partial neural observations.5 This is particularly critical when dealing with "overloaded predicates"—situations where the same relation (e.g., "resided in") can apply to different entity types depending on the context.10
+
+Methodologies developed between 2024 and 2026 employ MLNs to "verify" the output of LLMs by checking them against external domain knowledge.7 For instance, if an LLM summarizes a medical biography and identifies a "symptom" for a "disease," an MLN can cross-reference this against an authoritative medical knowledge base (like the National Library of Medicine) to ensure the relationship is clinically plausible.7 This dual-layer approach—LLM for acquisition, MLN for reasoning—improves both accuracy and interpretability.7
+
+## **Person-Centric Filtering and the Identity Problem**
+
+A major challenge in biographical relation extraction is the "Subject vs. Peripheral" distinction. In a narrative about a primary subject (the Anchor Node), secondary entities like parents, spouses, or colleagues are frequently mentioned alongside their own attributes (e.g., "The subject's father was born in Berlin").13 Hybrid systems must ensure that only the attributes of the Anchor Node are populated in the final table.
+
+### **Anchor Node Isolation and Flow-Based Pruning**
+
+To solve the Identity Problem, systems designate the primary biographical subject as the "Anchor Node" in the Knowledge Graph.14 Every extracted fact is treated as a constituent of a "hyper-phrase query" anchored to this node.15 By partitioning the graph and using reachability analysis, the system can identify sub-graphs that are directly relevant to the subject.
+
+Flow-based pruning involves tracing the "flow" of relational edges starting from the Anchor Node.15 Any node or edge that does not have a valid path to the subject (within a certain number of hops or weight threshold) is pruned from the graph before the final table transformation.15 This prevents attributes belonging to a spouse or child from "drifting" into the subject's record.
+
+### **Distance-Aware Attention and Syntactic Isolation**
+
+On the neural side, architectures like TENER utilize direction- and distance-aware attention to improve the precision of entity boundary detection in complex texts.11 In a sentence containing both the subject and a peripheral entity, distance-aware attention can weight the relational links based on their proximity to the Anchor Node's mentions.11
+
+Furthermore, models like DAnCE apply graph convolutions (GCN) to encode the arc between the subject and the verb phrase, effectively ignoring syntactic relations involving peripheral entities.14 This "syntactic isolation" ensures that the neural model's attention is focused on the subject's actions and properties, rather than general patterns found in the sentence.14
+
+| Isolation Mechanism | Technology | Core Function | Impact on Factual Accuracy |
+| :---- | :---- | :---- | :---- |
+| **Anchor Node Localization** | SANLA, DAnCE | Fixes a reference point for all relational tethering | Eliminates attribute drift to secondary actors 14 |
+| **Flow-Based Pruning** | Reachability Partitioning | Removes disconnected subgraphs from the final set | Increases precision of tabular rows 15 |
+| **Distance-Aware Attention** | TENER | Weights attention by relative token distance | Improves entity boundary and relation detection 11 |
+| **Logical Identity MLN** | Weighted Identity Formulas | Enforces subject-attribute uniqueness constraints | Prevents contradictory life-event records 5 |
+
+## **Embedding-Driven Logic: Deduplication and Clustering**
+
+The Knowledge Graph serves as more than just a storage medium; it is a platform for semantic resolution. Between 2023 and 2026, there has been a significant shift toward embedding-driven logic for entity and edge resolution, often bypassing the need for computationally expensive Graph Neural Networks (GNNs).1
+
+### **Knowledge-Infused Embedding Strategies**
+
+Knowledge-infused embedding strategies combine unstructured text representations with extracted symbolic triples.1 In systems like KGGen, an iterative clustering algorithm is used to resolve entities that appear under different names or descriptions (e.g., "Einstein," "he," "the physicist").1 By calculating the cosine similarity between node embeddings and their associated textual context, the system can merge related nodes into a single canonical entity.1
+
+The similarity is often computed as:
+
+![][image6]  
+where ![][image7] and ![][image8] are vector embeddings of the entity mentions and their local context.7 This approach allows for the deduplication of relations such as "place of birth" and "native of" without needing explicit rules for every possible linguistic variation.1 By refining the graph through iterative clustering, the system reduces the "sparsity problem" that plagues raw neural extractions, leading to a denser and more functional Knowledge Graph.1
+
+### **Normalization and Hybrid Recognition**
+
+Normalization steps frequently involve converting all entities and edges to lowercase and resolving coreferences.1 However, for specialized categories (e.g., phenotypes or legal roles), dictionary-driven approaches are often integrated.18 Using algorithms like the Aho-Corasick suffix tree, systems can match textual segments to standardized ontologies with high precision, providing a "semantic foundation" that neural models can then expand upon.18
+
+## **Benchmark Gap Analysis and the 2026 Landscape**
+
+Despite the progress in hybrid architectures, significant gaps remain in the evaluation and benchmarking of biographical relation extraction.1 The 2025–2026 research identifies three critical limitations in current benchmarks: single-relation constraints, lack of cross-dataset generalization, and entity bias.13
+
+### **Generalization Limits and Structural Issues**
+
+Analysis of relation extraction models reveals that they often struggle with unseen data, even within the same domain (e.g., moving from 19th-century biographies to 20th-century ones).13 This "poor generalization" is often a result of models learning dataset-specific artifacts or spurious correlations rather than robust relational patterns.13 For instance, a model might learn that "negation words" always predict a "contradiction" relation, achieving high accuracy on a specific benchmark without actually "reasoning" about the text.21
+
+Structural issues in benchmarks further exacerbate this problem:
+
+1. **Single-Relation per Sample**: Many legacy benchmarks only require the extraction of one relation per text sample, which fails to test the model's ability to navigate the dense relational networks of a full biography.13  
+2. **Non-Standardized Negative Classes**: The definition of what does *not* constitute a relation is often inconsistent, making it difficult to compare the precision of different systems.13  
+3. **Entity Bias**: Models tend to rely on the names of entities (e.g., "Einstein") to predict relations (e.g., "physicist") rather than the linguistic context.20 The DREB benchmark (2025) addresses this through entity replacement, forcing models to focus on relational context.20
+
+### **Efficiency: SLMs vs. MLNs**
+
+A major debate in the 2026 landscape concerns the efficiency of Small Language Models (SLMs) versus deterministic logic frameworks.22 SLMs, such as Gemma3-27B or ELECTRA-Small, offer high throughput and can be deployed locally for privacy-sensitive biomedical data.21 However, they often rely on superficial patterns.21
+
+In contrast, MLNs provide rigorous reasoning but face scalability challenges due to the computational burden of grounding large-scale logical formulas.5 Weight learning in MLNs is particularly difficult because the underlying ground propositional model grows exponentially with the domain size.5 To mitigate this, modern frameworks like LIMEN-AI (2025) use inductive learning and approximate symmetries to reduce the size of the training database, achieving processing speeds of up to 220 words per second on regulatory texts.5
+
+| Model Category | Representative Model | F1 Score (Biomedical) | Scalability / Efficiency |
+| :---- | :---- | :---- | :---- |
+| **Cloud-Based LLM** | GPT 4.1-mini | 55.6 (Text) | Low (Cost/Privacy constraints) 22 |
+| **Local SLM** | Gemma3-27B | 41.3 (Image+Text) | High (On-device deployment) 22 |
+| **Hybrid NeSy** | LIMEN-AI (MLN) | \~93.0 (Domain-Specific) | Moderate (220 words/sec) 6 |
+| **Small Transformer** | ELECTRA-Small | 89.4 (SNLI task) | Very High (Fast inference) 21 |
+
+## **Synthesis of the Hybrid Transformation Process**
+
+The transition from unstructured narrative to structured table is now viewed as a "knowledge-infused" transformation rather than a simple extraction task. By leveraging an intermediate Knowledge Graph, systems can maintain a "provenance trail" for every fact, linking table cells back to the specific sentence and triple from which they were derived.9
+
+### **Mitigating Semantic Drift via Guardrails**
+
+Semantic drift occurs when the meaning of a fact is subtly altered during the multi-stage transformation process. The use of "structural guardrails" in the KG ensures that the meaning remains grounded in a pre-defined ontology.4 For example, in a maternal health biography, the KG ensures that recommendations are grounded in the "complete clinical scenario" rather than isolated data points, reducing the risk of outdated or hallucinated responses.4
+
+The hybrid architecture solves this by:
+
+* Using **MLNs** to enforce "a priori" authoritative rules (e.g., regulatory compliance or medical protocols).6  
+* Using **Knowledge-Infused Embeddings** to cluster lexically diverse but semantically identical attributes.1  
+* Using **Anchor Node Reachability** to filter out secondary entities that would otherwise pollute the tabular data of the primary subject.14
+
+## **Conclusion**
+
+The hybrid landscape for transforming biographical narratives (2023–2026) is characterized by a sophisticated interplay between the perceptual power of neural networks and the cognitive intelligence of symbolic logic. The "Text \-\> KG \-\> Table" pipeline has proven to be a robust architecture for mitigating the inherent flaws of Large Language Models, such as hallucinations and identity confusion. By utilizing Markov Logic Networks as a deterministic filter, researchers have created systems capable of verifying neural extractions against logical constraints and domain-specific ontologies.
+
+The Identity Problem is addressed through a combination of Anchor Node isolation, flow-based pruning, and distance-aware attention, ensuring that tabular outputs remain strictly person-centric. While efficiency remains a challenge for full-scale logical reasoning, the development of approximate symmetry algorithms and specialized Small Language Models has made these hybrid systems increasingly viable for real-time applications. Moving forward, the focus must shift toward more robust, debiased benchmarks that can accurately measure a system's ability to generalize across the diverse and complex narratives of human lives. In this evolving landscape, the Knowledge Graph serves not just as a database, but as the essential bridge between the fluid world of natural language and the rigid requirements of structured data.
+
+#### **Works cited**
+
+1. KGGen: Extracting Knowledge Graphs from Plain Text with Language Models \- arXiv, accessed on March 31, 2026, [https://arxiv.org/html/2502.09956v2](https://arxiv.org/html/2502.09956v2)  
+2. textToKnowledgeGraph: generation of molecular interaction knowledge graphs using large language models for exploration in Cytoscape \- PMC, accessed on March 31, 2026, [https://pmc.ncbi.nlm.nih.gov/articles/PMC12916169/](https://pmc.ncbi.nlm.nih.gov/articles/PMC12916169/)  
+3. Advancing Symbolic Integration in Large Language Models: Beyond Conventional Neurosymbolic AI \- arXiv, accessed on March 31, 2026, [https://arxiv.org/html/2510.21425v1](https://arxiv.org/html/2510.21425v1)  
+4. GraphRAG-Enabled Local Large Language Model for Gestational Diabetes Mellitus: Development of a Proof-of-Concept, accessed on March 31, 2026, [https://diabetes.jmir.org/2026/1/e76454](https://diabetes.jmir.org/2026/1/e76454)  
+5. Markov Logic: An Interface Layer for Artificial Intelligence | Request PDF \- ResearchGate, accessed on March 31, 2026, [https://www.researchgate.net/publication/220696276\_Markov\_Logic\_An\_Interface\_Layer\_for\_Artificial\_Intelligence](https://www.researchgate.net/publication/220696276_Markov_Logic_An_Interface_Layer_for_Artificial_Intelligence)  
+6. Markov Logic Networks | Request PDF \- ResearchGate, accessed on March 31, 2026, [https://www.researchgate.net/publication/215990907\_Markov\_Logic\_Networks](https://www.researchgate.net/publication/215990907_Markov_Logic_Networks)  
+7. Integrating Automated Knowledge Extraction with Large Language Models for Explainable Medical Decision-Making \- IEEE Computer Society, accessed on March 31, 2026, [https://www.computer.org/csdl/proceedings-article/bibm/2023/10385557/1TOce3Hbd1m](https://www.computer.org/csdl/proceedings-article/bibm/2023/10385557/1TOce3Hbd1m)  
+8. Building Knowledge Graphs from Text: A Complete Guide with LLMs | by Shuchismita Sahu, accessed on March 31, 2026, [https://ssahuupgrad-93226.medium.com/building-knowledge-graphs-from-text-a-complete-guide-with-llms-02be1b0bce64](https://ssahuupgrad-93226.medium.com/building-knowledge-graphs-from-text-a-complete-guide-with-llms-02be1b0bce64)  
+9. From Clinical Text to Knowledge Graphs with John Snow Labs Healthcare NLP, accessed on March 31, 2026, [https://www.johnsnowlabs.com/from-clinical-text-to-knowledge-graphs-with-john-snow-labs-healthcare-nlp/](https://www.johnsnowlabs.com/from-clinical-text-to-knowledge-graphs-with-john-snow-labs-healthcare-nlp/)  
+10. A Domain-Specific Curated Benchmark for Entity and Document-Level Relation Extraction \- ACL Anthology, accessed on March 31, 2026, [https://aclanthology.org/2026.findings-eacl.301.pdf](https://aclanthology.org/2026.findings-eacl.301.pdf)  
+11. (PDF) Legal Entity Tracking Over Time \- ResearchGate, accessed on March 31, 2026, [https://www.researchgate.net/publication/399125803\_Legal\_Entity\_Tracking\_Over\_Time](https://www.researchgate.net/publication/399125803_Legal_Entity_Tracking_Over_Time)  
+12. PubMed Data Part 4: Building Knowledge Graphs | by FHIR Shot Learning \- Medium, accessed on March 31, 2026, [https://medium.com/@fhirshotlearning/pubmed-data-part-4-building-knowledge-graphs-b1cd0cb382b6](https://medium.com/@fhirshotlearning/pubmed-data-part-4-building-knowledge-graphs-b1cd0cb382b6)  
+13. Relation Extraction or Pattern Matching? Unravelling the Generalisation Limits of Language Models for Biographical RE \- Underline Science, accessed on March 31, 2026, [https://underline.io/lecture/138085-relation-extraction-or-pattern-matchingquestion-unravelling-the-generalisation-limits-of-language-models-for-biographical-re](https://underline.io/lecture/138085-relation-extraction-or-pattern-matchingquestion-unravelling-the-generalisation-limits-of-language-models-for-biographical-re)  
+14. Proceedings of the Fifteenth Workshop on Graph-Based Methods for Natural Language Processing (TextGraphs-15) \- ACL Anthology, accessed on March 31, 2026, [https://aclanthology.org/2021.textgraphs-1.pdf](https://aclanthology.org/2021.textgraphs-1.pdf)  
+15. SEARCH AND ANALYTICS USING SEMANTIC ANNOTATIONS \- Publikationen der UdS \- Universität des Saarlandes, accessed on March 31, 2026, [https://publikationen.sulb.uni-saarland.de/bitstream/20.500.11880/28516/1/dhruv-gupta-phd-thesis.pdf](https://publikationen.sulb.uni-saarland.de/bitstream/20.500.11880/28516/1/dhruv-gupta-phd-thesis.pdf)  
+16. cvr journal of science and technology, accessed on March 31, 2026, [https://cvr.ac.in/home4/Journal/Volume23.pdf](https://cvr.ac.in/home4/Journal/Volume23.pdf)  
+17. ACL-citations.txt \- ChaSen.org, accessed on March 31, 2026, [http://chasen.org/\~daiti-m/dist/ACL2Vec/ACL-citations.txt](http://chasen.org/~daiti-m/dist/ACL2Vec/ACL-citations.txt)  
+18. BiOmics: A Foundational Agent for Grounded and Autonomous Multi-omics Interpretation, accessed on March 31, 2026, [https://www.biorxiv.org/content/10.64898/2026.01.17.699830v1.full-text](https://www.biorxiv.org/content/10.64898/2026.01.17.699830v1.full-text)  
+19. Relation Extraction or Pattern Matching? Unravelling the ..., accessed on March 31, 2026, [https://aclanthology.org/2025.ijcnlp-long.81/](https://aclanthology.org/2025.ijcnlp-long.81/)  
+20. \[2501.01349\] Rethinking Relation Extraction: Beyond Shortcuts to Generalization with a Debiased Benchmark \- arXiv, accessed on March 31, 2026, [https://arxiv.org/abs/2501.01349](https://arxiv.org/abs/2501.01349)  
+21. Hypothesis Only Baselines in Natural Language Inference \- ResearchGate, accessed on March 31, 2026, [https://www.researchgate.net/publication/325447336\_Hypothesis\_Only\_Baselines\_in\_Natural\_Language\_Inference](https://www.researchgate.net/publication/325447336_Hypothesis_Only_Baselines_in_Natural_Language_Inference)  
+22. Benchmarking LLM-based Information Extraction Tools for Medical Documents \- medRxiv, accessed on March 31, 2026, [https://www.medrxiv.org/content/10.64898/2026.01.19.26344287v1.full.pdf](https://www.medrxiv.org/content/10.64898/2026.01.19.26344287v1.full.pdf)  
+23. Quantified Neural Markov Logic Networks \- ResearchGate, accessed on March 31, 2026, [https://www.researchgate.net/publication/379125080\_Quantified\_Neural\_Markov\_Logic\_Networks](https://www.researchgate.net/publication/379125080_Quantified_Neural_Markov_Logic_Networks)  
+24. Neuro-Symbolic Reasoning: Performance, Challenges, and Benchmarks: A Systematic Literature Review \- AJEAS Paper Template, accessed on March 31, 2026, [https://www.journals.abuad.edu.ng/index.php/ajeas/article/download/1367/942](https://www.journals.abuad.edu.ng/index.php/ajeas/article/download/1367/942)  
+25. Small Language Models for Drug-Drug Interaction Extraction from Biomedical Text: A Systematic Literature Review, accessed on March 31, 2026, [https://journal-isi.org/index.php/isi/article/download/1430/722/7437](https://journal-isi.org/index.php/isi/article/download/1430/722/7437)
+
+[image1]: <data:image/png;base64,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>
+
+[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAYCAYAAAD6S912AAABHElEQVR4Xu2SMWsCQRCFRzSgkEKMGNIISS1YBAmCRQoLm4hoE8jPSJEmvb1oF7QUxJ9gYSlYWQSrFGmEIJZaRt9j9+7mwl2jFinug4/bea57zrgiERH/h3e4hr/wVeVcM3PYwx9VhzKBGbiFnyqfizmEJOzaqUOpwkvxvtBVn7HmoQ4vcKPqQJL2eSemPb6AxMQcOLA1eRL/C7inYZ8++OvGsKOyopgR3KtsBOuqvoCPqna5hl/i38z2OM+symbwVtWh3MBvWLI1W+Asp2LmS3KwbNekCXtwoTIXtjyEbRiHLTHD51Vi6yn4Id6seHgfvsGVzQJJw4J4fxRnlIdX7g4/O/j8NzyFpZj5n4UarMAHCbg2x8IbwJlHnJEDAoorrzBfMSYAAAAASUVORK5CYII=>
+
+[image3]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAZCAYAAADuWXTMAAABEElEQVR4XuWTIYsCYRCGR8Qgh+ihIIIiWkTBeMFusdkPBLPNIpjEf6DFaNRwYBDBYDNatWk7MBgODEa9d5hVPmfXdbM+8LDsvDv77Te7S/SS+OAcjnXwjAAcwAacwtJ9/BhecQgvsGMds+YFbsThDp5JnoDPPfNNstpKB17okzT/6MCNCEzALUlzzTrnumeO8AS/dOAFXnUBP3QA6iRDdIRfEzfzvjU89Q2M6eDKJ0kzT1zDN07rokkZ/sKkqkdhRdVsNMl5vxPYhTlVvxGCS7I/copkSCMYVtkN/n73MK8DkCHZjo0DyZBa1tEJ/jVnsA2LZsANLF+wNgODP5Lt9GDQDKokQyqYRYWfXN7vu/APGD0skEjuepMAAAAASUVORK5CYII=>
+
+[image4]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACkAAAAZCAYAAACsGgdbAAACYklEQVR4Xu2WvWsVURDFR9AiUTESMQb8AAtBIaQwCoqFRQQbJY0YiIVgI2plCiEoBIKNZcogSAqbkD9AwUJUROwEQ5oIKgEhgoWgYIIf52T2rvedvft23yPY+H5w2Lcz9+2dvTNz75p16JBzFnoEDamjhCfQDLRFHTU4Dn1SYxWc6At0HfoBnWh0F+D411CvOlrgonmwtdgEPYBuQpPQR+hgPEDYDb2FutTRBj+hW2pM0Qe9g4bNV2hbo7vAKPRLjW3yFFpUY4ox6De0Ux0lfIPm1dgmp6A1aLM6lGnzICsHZnDshBojWD4j0CG535eP+EvIIq9JeqB+aMl8Yv6mmrEV+g4dU0fGG+hy9vu8eQez3q9Bq5bO1ix0To3KV/OJ67DLfPygOswzMWW+coSpZGkcNV8tLkSq3u+aN21T+GfuecoeaFxsXOkP2VVh04UAw47BUqqC3d20w/kwBpl62H0rdnGzIGO44gvmTVlFZZCsEQaZetgB6KTY6gbJFDPVh9WRoDJI7o3L0F6xM3Wsu5C+AGsq1JkyYN4oDIxbFF8+sAN6Gd3HVDYOC5b1yK4N8IEPoffQlcge4OSph7JkWB7hxeMgeQS+iO4DnJfzp156ne3Qcyum+o55OtnxqTO8bDPnh8lKpv3Q7ei+bMsKm7lmLIfnc0iPwu3klfmqKrRzpVJwU+bZHmBNaynFsBbjFc/5bO4oHQBumAd/WuxkIz8wuIpX1UgYGMVvR06mdEOPs+s98QUuQWfU2CJ8yWeWztb6OcpiPaIOIXU6xPzzj9524ArMWfFUqgM/mC+oscN/xx+7d3CYTd6U6wAAAABJRU5ErkJggg==>
+
+[image5]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAAAaCAYAAABhJqYYAAAAvklEQVR4XmNgGAUDARygmAPKFwZiNSBmhPLBAMTJAuKLQPwUiF8DcQIQvwXin0A8Ba4SCDKA+CCUDTLtHANEowIDRPNzqBwYgHTCrJIB4idAbAMV+wTEmVA5MOBBYrsA8T8gFkcSwwpYgHgNEP9Hl8AGpIH4ARD/RhID2SoA44CsA5m0B4hboewDMEkGiEdVYByQ4jtAbAXEt4D4CxBfh8qBFAVD2WAA8vEvBkgIBAGxCQMknEH8l1D5UUBHAADTniI11ql4UwAAAABJRU5ErkJggg==>
+
+[image6]: <data:image/png;base64,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>
+
+[image7]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAAYCAYAAAAcYhYyAAAAvUlEQVR4XmNgGAUDAv4B8X8gbkATJxqwMEAMAOHraHJEgxwGhCEgzIkqTRjwA/EJBlRDLFFUEAGWM0A0ToHSIPwAiKWR1BAE7xkg4QCy/ScDwqAIZEX4AMgrIEN0oHyQRpghIAOJAh5AvIMBEZDiDBBXwQxihIrjBCDbQa5YAcSzkPBmBhK8hB6t2DCyK7ECUAoFKcIGkL00CU0ODmApFJdzWxkQhmCkYB6oBDIuR5M/gEUNCH9FKBsFgxMAAJZwRJJAM+MGAAAAAElFTkSuQmCC>
+
+[image8]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAYCAYAAADzoH0MAAAAt0lEQVR4XmNgGAVUATxA/J9IbAfEjBBtCMABxLOAeD4DQuF6qBgMv0KSA6nDCpBdYowmBwLRDAh5aTQ5MCBkgCkDfnm8BoD8PQUqB8IsqNIQgM+AZCD+C5XbgyYHB8gGgALtERL+AhWfD8TqMA3oAJ8LWIG4gQEhD+JjAHwGwABM/gQQ86PJkWTAQyCWRJMjaADIRpg8KKGBEiAKwGcAJxA3QuVA2AxZkti88IsBEp18EG2jYPAAAFrtUs7zckaSAAAAAElFTkSuQmCC>
