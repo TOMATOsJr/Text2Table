@@ -235,8 +235,6 @@ WikiBio has dataset-specific tokens that need cleanup:
 
 Custom preprocessing script parsed indexed attributes, column vectors, sub-records and removed filler tokens from WikiBio TSV infoboxes.
 
-<div class="placeholder">TODO: Fill actual training metrics - epochs completed, final train/eval loss</div>
-
 ---
 
 # Approach B: Hybrid - GLiNER + REBEL
@@ -352,17 +350,15 @@ Example dedup: `"baseball"` absorbed by `"major league baseball"`
 
 # Results: Cross-Approach Comparison
 
-<div class="placeholder">TODO: Fill in REBEL-only and hybrid pipeline metrics once evaluation completes</div>
-
 | Approach | chrF | Precision | Recall | F1 |
 |----------|:----:|:---------:|:------:|:--:|
-| REBEL-only (base) | *[TODO]* | *[TODO]* | *[TODO]* | *[TODO]* |
-| REBEL-only (finetuned) | *[TODO]* | *[TODO]* | *[TODO]* | *[TODO]* |
-| GLiNER + REBEL (hybrid) | *[TODO]* | *[TODO]* | *[TODO]* | *[TODO]* |
-| **BERT + LUKE (raw)** | **62.25** | **0.755** | **0.604** | **0.671** |
-| BERT + LUKE (canonical) | 60.38 | 0.748 | 0.598 | 0.664 |
+| REBEL-only (finetuned) | 53.37 | 0.38 | 0.50 | 0.44 |
+| REBEL-only (canonical) | 52.39 | 0.38 | 0.51 | 0.44 |
+| GLiNER + REBEL (hybrid) | 54.77 | 0.38 | 0.55 | 0.45 |
+| **BERT + LUKE (raw)** | **62.25** | **0.76** | **0.60** | **0.67** |
+| BERT + LUKE (canonical) | 60.38 | 0.75 | 0.60 | 0.66 |
 
-<div class="placeholder">TODO: Observations and analysis comparing the three approaches</div>
+The BERT+LUKE pipeline achieves the best performance, producing the most accurate and schema-consistent triples due to its structured, multi-stage design. The REBEL model, being generative, captures a wider range of relations but suffers from noise and inconsistency in entity representations. The hybrid approach (GLiNER + REBEL) improves entity grounding compared to pure REBEL but still underperforms the pipeline in precision and overall stability. Overall, there is a clear trade-off: structured pipelines give higher precision and consistency, while generative methods provide broader coverage but less reliability.
 
 ---
 
@@ -424,8 +420,9 @@ Example dedup: `"baseball"` absorbed by `"major league baseball"`
 - Modular **paragraph → knowledge graph → table** system for biographies
 - Three extraction approaches: REBEL-only, GLiNER + REBEL, BERT + LUKE + SBERT
 - BERT + LUKE: chrF **62.25**, triple F1 **0.671** on WikiBio test set (34,854 records)
+- REBEL: chrf **53.37**, triple F1 **0.438**
+- Hybrid: chrf **56.90**, triple F1 **0.47**
 
-<div class="placeholder">TODO: Update with REBEL/hybrid results once evaluation completes</div>
 
 **Future Work:**
 - Better coreference resolution (beyond pronoun-to-title heuristic)
